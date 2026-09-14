@@ -1,0 +1,60 @@
+# ==============================================================================
+# XRISten: Git Ignore Rules
+# Designed for XRISM X-ray Astronomy Data Reduction & Agent Workflows
+# ==============================================================================
+
+# --- Astronomical Binary Data Files (STRICTLY FORBIDDEN) ---
+*.fits
+*.fits.gz
+*.fit
+*.fit.gz
+*.evt
+*.evt.gz
+*.evts
+*.rmf
+*.arf
+*.pha
+*.pi
+*.lc
+*.expo
+*.gti
+*.ehk
+*.gz
+
+# --- Reduction Repositories & Working Directories ---
+*_repo/
+*_analysis/
+raytrace_*.fits
+
+# --- HEASoft, FTOOLS & Execution Logs ---
+*.log
+pipeline_audit.log
+xselect.log
+pfiles/
+*.tmp
+
+# --- Python Bytecode & Environments ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# --- Operating System & Editor Metadata ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Internal Agent / Platform Runtimes (if present) ---
+.gemini/
+GEMINI.md
+XRISM_reduc/
