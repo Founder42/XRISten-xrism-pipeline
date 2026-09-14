@@ -284,7 +284,7 @@ If you utilize **XRISten-xrism-pipeline** in astronomical data analysis leading 
 
 ```bibtex
 @software{xristen_pipeline_2026,
-  author       = {Fangzheng, Dr. and Contributors},
+  author       = {Fangzheng, Shi},
   title        = {{XRISten-xrism-pipeline}: Automated Reduction Pipeline and AI Copilot for XRISM/Resolve},
   year         = {2026},
   publisher    = {GitHub},
