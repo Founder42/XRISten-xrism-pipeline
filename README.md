@@ -149,30 +149,51 @@ The pipeline executes the reduction through 11 modular stages:
 ```text
 Usage: ./xrism_rsl_pipeline.sh -o <OBSID> [OPTIONS]
 
-Required Arguments:
-  -o OBSID           Target observation identifier (e.g. 201007010)
+Required Parameters:
+  -o <OBSID>          9-digit XRISM observation ID (e.g. 201007010).
 
-Optional Arguments:
-  -s SOURCE_NAME     Target name for folder naming (Default: same as OBSID)
-  -r RA              Target Right Ascension in decimal degrees (e.g. 93.901482)
-  -d DEC             Target Declination in decimal degrees (e.g. 71.037482)
-  -c CORTIME_LIST    Comma-separated CORTIME thresholds (Default: "4.0")
-  -b NXB_DIR         Path to Resolve NXB database directory
-  -h                 Display help information and exit
+Optional Parameters:
+  -s <SOURCE_NAME>    Target source name (default: same as OBSID).
+  -r <RA>             Target celestial Right Ascension in decimal degrees.
+  -d <DEC>            Target celestial Declination in decimal degrees.
+  -c <CORTIME>        Cut-off rigidity threshold(s). Can be a single value or
+                      comma-separated list, e.g. "4.0" or "4,6" (default: "4.0").
+  -m <MODE>           Execution mode: "all" or comma-separated steps
+                      (e.g. "prepare,screen_risetime,cutoff_rigidity,chk_event").
+                      (default: "all").
+  -i <RAW_DIR>        Input directory containing raw observation data (default: "./<OBSID>").
+  -b <NXB_DIR>        Directory of XRISM NXB database (default: "\$XRISM_NXB_DB" or "/path/to/XRISM_NXB_DB").
+  -x <RDETX0>         Nominal detector X center (default: 3.5).
+  -y <RDETY0>         Nominal detector Y center (default: 3.5).
+  -h                  Show this help message and exit.
+
+Available Step Names for -m:
+  prepare             Create analysis directory, link files, inspect headers.
+  screen_risetime     Execute pulse-shape and rise-time screening (cl2.evt).
+  cutoff_rigidity     Apply CORTIME filtering for each specified threshold.
+  chk_event           Compute branching ratios, DET image, and light curve.
+  extract_spec        Extract Resolve Hp grade-0 spectrum.
+  generate_rmf        Create UPR file and generate XL-size RMF.
+  generate_arf        Verify coordinates, compute exposure map, and generate ARF.
+  generate_NXB        Generate NXB spectrum, image, and custom NXB RMF.
 ```
 
-### Canonical Invocation Examples
+### Examples
 
-#### 1. Basic Reduction (Single CORTIME Cut)
-```bash
-chmod +x xrism_rsl_pipeline.sh
-./xrism_rsl_pipeline.sh     -o 201007010     -s Mrk3     -r 93.901482     -d 71.037482     -c "4"     -b /data/caldb/xrism_nxb
-```
+#### 1. Run all steps for OBSID 201007010 with default CORTIME 4.0:
+  ```bash
+  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
+  ```
 
-#### 2. Multi-Threshold Continuum Comparison (`CORTIME` 4 and 6)
-```bash
-./xrism_rsl_pipeline.sh     -o 201007010     -s Mrk3     -c "4,6"     -b /data/caldb/xrism_nxb
-```
+#### 2. Run multi-threshold CORTIME comparison (4 and 6):
+  ```bash
+  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -c "4,6" -b /path/to/XRISM_NXB_DB
+  ```
+
+#### 3. Run specific steps only:
+  ```bash
+  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -m "cutoff_rigidity,extract_spec" -c "4,6"
+  ```
 
 ---
 
@@ -253,7 +274,7 @@ This log timestamps all stage transitions, executed commands, and parameter conf
 
 ## Acknowledgments & Inspiration
 
-This project was inspired by and builds upon the foundational XRISM Resolve reduction procedures documented by **Y. R. Xu** in [`XRISM-data-reduction`](https://github.com/yrxu/XRISM-data-reduction/tree/main). We gratefully acknowledge their valuable contributions to the XRISM observational astrophysics and open-source software community.
+This project was inspired by and builds upon the foundational XRISM Resolve reduction procedures documented by **Yerong Xu** in [`XRISM-data-reduction`](https://github.com/yrxu/XRISM-data-reduction/tree/main). We gratefully acknowledge their valuable contributions to the XRISM observational astrophysics and open-source software community.
 
 ---
 
