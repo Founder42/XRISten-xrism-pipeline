@@ -339,7 +339,7 @@ step_extract_spec() {
     cd "${ANALYSIS_DIR}"
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
-    local spec_out="${SOURCE_NAME}_rsl_Hp_src_COR${cor}.pha"
+    local spec_out="${OBSID}_rsl_Hp_src_COR${cor}.pha"
 
     log_info "Extracting Resolve high-primary (Hp) spectrum (excluding px 12 & 27)..."
     xselect <<XSEL_SPEC_EOF
@@ -368,7 +368,7 @@ step_generate_rmf() {
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
     local upr_evt="xa${OBSID}rsl_p0px1000_UPR_COR${cor}.evt"
-    local rmf_root="${SOURCE_NAME}_rsl_totexp_Hp_XL_src_COR${cor}"
+    local rmf_root="${OBSID}_rsl_totexp_Hp_XL_src_COR${cor}"
 
     # 1. Screen artificial Ls events to generate UPR event file
     log_info "Generating UPR event file for RMF..."
@@ -452,9 +452,9 @@ step_generate_arf() {
     local ehk="xa${OBSID}.ehk"
     local gti="xa${OBSID}rsl_px1000_exp.gti"
     local expo_out="xa${OBSID}rsl_p0px1000_COR${cor}.expo"
-    local rmf_in="${SOURCE_NAME}_rsl_totexp_Hp_XL_src_COR${cor}.rmf"
-    [[ ! -f "${rmf_in}" ]] && rmf_in="${SOURCE_NAME}_rsl_totexp_Hp_XL_src_COR${cor}_comb.rmf"
-    local arf_out="${SOURCE_NAME}_rsl_totexp_Hp_ptsrc_COR${cor}.arf"
+    local rmf_in="${OBSID}_rsl_totexp_Hp_XL_src_COR${cor}.rmf"
+    [[ ! -f "${rmf_in}" ]] && rmf_in="${OBSID}_rsl_totexp_Hp_XL_src_COR${cor}_comb.rmf"
+    local arf_out="${OBSID}_rsl_totexp_Hp_ptsrc_COR${cor}.arf"
     local reg_file="region_no12_no27.reg"
 
     # 1. Check coordinates consistency with coordpnt
@@ -478,6 +478,12 @@ step_generate_arf() {
     create_region_files "."
 
     # 4. Generate ARF via xaarfgen
+    # Clean pre-existing raytrace file to prevent xaarfgen collision
+    if [[ -f "${xrt_file}" ]]; then
+        log_info "Detected existing raytrace file '${xrt_file}'. Removing prior to running xaarfgen..."
+        rm -f "${xrt_file}"
+    fi
+
     log_info "Generating point-source ARF via xaarfgen..."
     punlearn xaarfgen
     xaarfgen xrtevtfile="${xrt_file}" source_ra="${SRC_RA}" source_dec="${SRC_DEC}" \
