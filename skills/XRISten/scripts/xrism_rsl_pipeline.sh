@@ -387,11 +387,10 @@ step_generate_arf() {
              pixgtifile="${gti}" outfile="${expo_out}" outmaptype=EXPOSURE delta=20.0 numphi=1 clobber=yes
     log_audit "EXEC: xaexpmap -> ${expo_out}"
 
-    # 3. Raytracing event file detection
-    local xrt_file="raytrace_xa${OBSID}rsl_p0px1000_imgmode.fits"
-    if [[ ! -f "${xrt_file}" ]]; then
-        xrt_file="NONE"
-    fi
+    # 3. Raytracing event file is an output from xaarfgen
+    local xrt_file="raytrace_xa${OBSID}rsl_p0px1000_imgmode_COR${cor}.fits"
+
+    create_region_files "."
 
     # 4. Generate ARF via xaarfgen
     log_info "Generating point-source ARF via xaarfgen..."
