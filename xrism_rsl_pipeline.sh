@@ -186,6 +186,7 @@ step_prepare() {
 
     # 5. Extract header keywords
     local cl_evt="xa${OBSID}rsl_p0px1000_cl.evt"
+    [[ ! -f "${cl_evt}" ]] && cl_evt="xa${OBSID}rsl_p0px1000_cl2.evt"
     if [[ -f "${cl_evt}" ]]; then
         RA_NOM=$(get_fits_keyword "${cl_evt}" "RA_NOM")
         DEC_NOM=$(get_fits_keyword "${cl_evt}" "DEC_NOM")
@@ -396,21 +397,55 @@ step_generate_arf() {
     fi
     cd "${ANALYSIS_DIR}"
 
-    # Ensure coordinates are available even if prepare step was skipped
-    local cl_evt="xa${OBSID}rsl_p0px1000_cl.evt"
-    if [[ (-z "${RA_NOM:-}" || -z "${DEC_NOM:-}" || -z "${PA_NOM:-}") && -f "${cl_evt}" ]]; then
-        log_info "Retrieving nominal pointing from '${cl_evt}'..."
-        [[ -z "${RA_NOM:-}" ]] && RA_NOM=$(get_fits_keyword "${cl_evt}" "RA_NOM")
-        [[ -z "${DEC_NOM:-}" ]] && DEC_NOM=$(get_fits_keyword "${cl_evt}" "DEC_NOM")
-        [[ -z "${PA_NOM:-}" ]] && PA_NOM=$(get_fits_keyword "${cl_evt}" "PA_NOM")
-        if [[ -z "${SRC_RA}" ]]; then
-            SRC_RA=$(get_fits_keyword "${cl_evt}" "RA_OBJ")
-            [[ -z "${SRC_RA}" ]] && SRC_RA="${RA_NOM}"
+    # --------------------------------------------------------------------------
+    # Robust Pointing & Target Coordinates Extraction
+    # --------------------------------------------------------------------------
+    if [[ -z "${RA_NOM:-}" || -z "${DEC_NOM:-}" || -z "${PA_NOM:-}" ]]; then
+        log_info "Nominal pointing not in memory; scanning event files for FITS header keywords..."
+        
+        local candidate_files=(
+            "xa${OBSID}rsl_p0px1000_cl.evt"
+            "xa${OBSID}rsl_p0px1000_cl2.evt"
+            "xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
+            "${REPO_DIR}/resolve/event_cl/xa${OBSID}rsl_p0px1000_cl.evt"
+            "${REPO_DIR}/resolve/event_cl/xa${OBSID}rsl_p0px1000_cl2.evt"
+            "${REPO_DIR}/xa${OBSID}rsl_p0px1000_cl.evt"
+        )
+        
+        local header_evt=""
+        for cand in "${candidate_files[@]}"; do
+            if [[ -f "${cand}" ]]; then
+                header_evt="${cand}"
+                break
+            fi
+        done
+
+        if [[ -n "${header_evt}" ]]; then
+            log_info "Reading nominal pointing from '${header_evt}'..."
+            [[ -z "${RA_NOM:-}" ]] && RA_NOM=$(get_fits_keyword "${header_evt}" "RA_NOM")
+            [[ -z "${DEC_NOM:-}" ]] && DEC_NOM=$(get_fits_keyword "${header_evt}" "DEC_NOM")
+            [[ -z "${PA_NOM:-}" ]] && PA_NOM=$(get_fits_keyword "${header_evt}" "PA_NOM")
+            if [[ -z "${SRC_RA:-}" ]]; then
+                SRC_RA=$(get_fits_keyword "${header_evt}" "RA_OBJ")
+                [[ -z "${SRC_RA:-}" ]] && SRC_RA="${RA_NOM}"
+            fi
+            if [[ -z "${SRC_DEC:-}" ]]; then
+                SRC_DEC=$(get_fits_keyword "${header_evt}" "DEC_OBJ")
+                [[ -z "${SRC_DEC:-}" ]] && SRC_DEC="${DEC_NOM}"
+            fi
         fi
-        if [[ -z "${SRC_DEC}" ]]; then
-            SRC_DEC=$(get_fits_keyword "${cl_evt}" "DEC_OBJ")
-            [[ -z "${SRC_DEC}" ]] && SRC_DEC="${DEC_NOM}"
+
+        # Fallback to user-supplied target coordinates or default PA if still empty
+        [[ -z "${RA_NOM:-}" && -n "${SRC_RA:-}" ]] && RA_NOM="${SRC_RA}"
+        [[ -z "${DEC_NOM:-}" && -n "${SRC_DEC:-}" ]] && DEC_NOM="${SRC_DEC}"
+        [[ -z "${PA_NOM:-}" ]] && PA_NOM="0.0"
+
+        if [[ -z "${RA_NOM:-}" || -z "${DEC_NOM:-}" ]]; then
+            log_error "Could not determine nominal pointing (RA_NOM, DEC_NOM). Please provide -r <RA> -d <DEC> or ensure event files are present in '${ANALYSIS_DIR}'."
+            exit 1
         fi
+        
+        log_info "Using pointing: RA_NOM=${RA_NOM}, DEC_NOM=${DEC_NOM}, PA_NOM=${PA_NOM}, SRC_RA=${SRC_RA}, SRC_DEC=${SRC_DEC}"
     fi
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
@@ -426,8 +461,8 @@ step_generate_arf() {
     log_info "Verifying coordinates alignment with coordpnt (Nominal center: ${RDETX0}, ${RDETY0})..."
     punlearn coordpnt
     coordpnt input="${RDETX0},${RDETY0}" outfile=NONE telescop=XRISM instrume=RESOLVE teldeffile=CALDB \
-             startsys=DET stopsys=RADEC ra="${RA_NOM}" dec="${DEC_NOM}" roll="${PA_NOM}" \
-             ranom="${RA_NOM}" decnom="${DEC_NOM}" clobber=yes
+             startsys=DET stopsys=RADEC ra="${RA_NOM:-0.0}" dec="${DEC_NOM:-0.0}" roll="${PA_NOM:-0.0}" \
+             ranom="${RA_NOM:-0.0}" decnom="${DEC_NOM:-0.0}" clobber=yes
     log_audit "EXEC: coordpnt check at ${RDETX0},${RDETY0}"
 
     # 2. Make spatial exposure map
@@ -577,6 +612,9 @@ main() {
     SOURCE_NAME=""
     SRC_RA=""
     SRC_DEC=""
+    RA_NOM=""
+    DEC_NOM=""
+    PA_NOM=""
     CORTIMES="4.0"
     EXEC_MODE="all"
     RAWDATA_DIR=""
