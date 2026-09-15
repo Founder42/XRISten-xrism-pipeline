@@ -163,15 +163,18 @@ step_prepare() {
         log_info "Found existing reprocessed repository: '${REPO_DIR}'."
     fi
 
-    # 2. Establish source analysis working directory
+    # 2. Establish analysis directory
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
     mkdir -p "${ANALYSIS_DIR}"
-    cd "${ANALYSIS_DIR}"
 
-    # 3. Stage necessary primary files from REPO
+    # 3. Stage necessary primary files from REPO directly into ANALYSIS_DIR
     log_info "Staging primary event, EHK, and GTI files into '${ANALYSIS_DIR}'..."
-    cp -u "../${REPO_DIR}"/resolve/event_cl/*cl*.evt* ./ 2>/dev/null || cp -u "../${REPO_DIR}"/*cl*.evt* ./ 2>/dev/null || true
-    cp -u "../${REPO_DIR}"/auxil/*.ehk* ./ 2>/dev/null || cp -u "../${REPO_DIR}"/*.ehk* ./ 2>/dev/null || true
-    cp -u "../${REPO_DIR}"/resolve/event_cl/*px1000_exp.gti* ./ 2>/dev/null || cp -u "../${REPO_DIR}"/*px1000_exp.gti* ./ 2>/dev/null || true
+    cp -u "${REPO_DIR}"/resolve/event_cl/*cl*.evt* "${ANALYSIS_DIR}/" 2>/dev/null || cp -u "${REPO_DIR}"/*cl*.evt* "${ANALYSIS_DIR}/" 2>/dev/null || true
+    cp -u "${REPO_DIR}"/auxil/*.ehk* "${ANALYSIS_DIR}/" 2>/dev/null || cp -u "${REPO_DIR}"/*.ehk* "${ANALYSIS_DIR}/" 2>/dev/null || true
+    cp -u "${REPO_DIR}"/resolve/event_cl/*px1000_exp.gti* "${ANALYSIS_DIR}/" 2>/dev/null || cp -u "${REPO_DIR}"/*px1000_exp.gti* "${ANALYSIS_DIR}/" 2>/dev/null || true
+
+    # 4. Enter ANALYSIS_DIR after staging
+    cd "${ANALYSIS_DIR}"
 
     # Uncompress any .gz files if present
     if ls *.gz >/dev/null 2>&1; then
@@ -207,6 +210,11 @@ step_prepare() {
 
 step_screen_risetime() {
     log_info "=== Running Step: step_screen_risetime ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
     
     local infile="xa${OBSID}rsl_p0px1000_cl.evt"
@@ -232,6 +240,11 @@ step_screen_risetime() {
 step_cutoff_rigidity() {
     local cor="$1"
     log_info "=== Running Step: step_cutoff_rigidity (CORTIME >= ${cor}) ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
 
     local ehk="xa${OBSID}.ehk"
@@ -265,6 +278,11 @@ step_cutoff_rigidity() {
 step_chk_event() {
     local cor="$1"
     log_info "=== Running Step: step_chk_event (COR${cor}) ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
@@ -312,6 +330,11 @@ XSEL_LC_EOF
 step_extract_spec() {
     local cor="$1"
     log_info "=== Running Step: step_extract_spec (COR${cor}) ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
@@ -335,6 +358,11 @@ XSEL_SPEC_EOF
 step_generate_rmf() {
     local cor="$1"
     log_info "=== Running Step: step_generate_rmf (XL Size, COR${cor}) ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
@@ -361,7 +389,29 @@ step_generate_rmf() {
 step_generate_arf() {
     local cor="$1"
     log_info "=== Running Step: step_generate_arf (COR${cor}) ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
+
+    # Ensure coordinates are available even if prepare step was skipped
+    local cl_evt="xa${OBSID}rsl_p0px1000_cl.evt"
+    if [[ (-z "${RA_NOM:-}" || -z "${DEC_NOM:-}" || -z "${PA_NOM:-}") && -f "${cl_evt}" ]]; then
+        log_info "Retrieving nominal pointing from '${cl_evt}'..."
+        [[ -z "${RA_NOM:-}" ]] && RA_NOM=$(get_fits_keyword "${cl_evt}" "RA_NOM")
+        [[ -z "${DEC_NOM:-}" ]] && DEC_NOM=$(get_fits_keyword "${cl_evt}" "DEC_NOM")
+        [[ -z "${PA_NOM:-}" ]] && PA_NOM=$(get_fits_keyword "${cl_evt}" "PA_NOM")
+        if [[ -z "${SRC_RA}" ]]; then
+            SRC_RA=$(get_fits_keyword "${cl_evt}" "RA_OBJ")
+            [[ -z "${SRC_RA}" ]] && SRC_RA="${RA_NOM}"
+        fi
+        if [[ -z "${SRC_DEC}" ]]; then
+            SRC_DEC=$(get_fits_keyword "${cl_evt}" "DEC_OBJ")
+            [[ -z "${SRC_DEC}" ]] && SRC_DEC="${DEC_NOM}"
+        fi
+    fi
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
     local ehk="xa${OBSID}.ehk"
@@ -410,6 +460,11 @@ step_generate_arf() {
 step_generate_NXB() {
     local cor="$1"
     log_info "=== Running Step: step_generate_NXB (COR${cor}) ==="
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    if [[ ! -d "${ANALYSIS_DIR}" ]]; then
+        log_error "Analysis directory '${ANALYSIS_DIR}' not found. Please run 'prepare' step first."
+        exit 1
+    fi
     cd "${ANALYSIS_DIR}"
 
     local evt="xa${OBSID}rsl_p0px1000_cl2_COR${cor}.evt"
@@ -482,7 +537,10 @@ Optional Parameters:
   -m <MODE>           Execution mode: "all" or comma-separated steps
                       (e.g. "prepare,screen_risetime,cutoff_rigidity,chk_event").
                       (default: "all").
-  -i <RAW_DIR>        Input directory containing raw observation data (default: "./<OBSID>").
+  -i <RAWDATA_DIR>    Base directory containing raw observation data (default: ".").
+                      The pipeline accesses raw data at "<RAWDATA_DIR>/<OBSID>",
+                      creates reprocessed repository at "<RAWDATA_DIR>/<OBSID>_repo",
+                      and analysis workspace at "<RAWDATA_DIR>/<OBSID>_analysis".
   -b <NXB_DIR>        Directory of XRISM NXB database (default: "\$XRISM_NXB_DB" or "/path/to/XRISM_NXB_DB").
   -x <RDETX0>         Nominal detector X center (default: 3.5).
   -y <RDETY0>         Nominal detector Y center (default: 3.5).
@@ -499,14 +557,14 @@ Available Step Names for -m:
   generate_NXB        Generate NXB spectrum, image, and custom NXB RMF.
 
 Examples:
-  # 1. Run all steps for OBSID 201007010 with default CORTIME 4.0:
-  $(basename "$0") -o 201007010 -s Mrk3 -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
+  # 1. Run all steps with raw data at /path/to/rawdata/201007010:
+  $(basename "$0") -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
 
   # 2. Run multi-threshold CORTIME comparison (4 and 6):
-  $(basename "$0") -o 201007010 -s Mrk3 -c "4,6" -b /path/to/XRISM_NXB_DB
+  $(basename "$0") -o 201007010 -s Mrk3 -i /path/to/rawdata -c "4,6" -b /path/to/XRISM_NXB_DB
 
-  # 3. Run specific steps only:
-  $(basename "$0") -o 201007010 -s Mrk3 -m "cutoff_rigidity,extract_spec" -c "4,6"
+  # 3. Run specific steps only from any directory:
+  $(basename "$0") -o 201007010 -s Mrk3 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec" -c "4,6"
 USAGE_EOF
     exit 0
 }
@@ -521,7 +579,7 @@ main() {
     SRC_DEC=""
     CORTIMES="4.0"
     EXEC_MODE="all"
-    RAW_DIR=""
+    RAWDATA_DIR=""
     NXB_DIR="${XRISM_NXB_DB:-/path/to/XRISM_NXB_DB}"
     RDETX0="3.5"
     RDETY0="3.5"
@@ -534,7 +592,7 @@ main() {
             d) SRC_DEC="${OPTARG}" ;;
             c) CORTIMES="${OPTARG}" ;;
             m) EXEC_MODE="${OPTARG}" ;;
-            i) RAW_DIR="${OPTARG}" ;;
+            i) RAWDATA_DIR="${OPTARG}" ;;
             b) NXB_DIR="${OPTARG}" ;;
             x) RDETX0="${OPTARG}" ;;
             y) RDETY0="${OPTARG}" ;;
@@ -549,22 +607,33 @@ main() {
     fi
 
     [[ -z "${SOURCE_NAME}" ]] && SOURCE_NAME="${OBSID}"
-    [[ -z "${RAW_DIR}" ]] && RAW_DIR="./${OBSID}"
 
-    REPO_DIR="${OBSID}_repo"
-    ANALYSIS_DIR="${SOURCE_NAME}_analysis"
-    AUDIT_LOG="$(pwd)/${ANALYSIS_DIR}/pipeline_audit.log"
+    # Resolve RAWDATA_DIR and derive standardized paths
+    [[ -z "${RAWDATA_DIR}" ]] && RAWDATA_DIR="."
+    RAWDATA_DIR="${RAWDATA_DIR%/}"
+    if [[ "$(basename "${RAWDATA_DIR}")" == "${OBSID}" ]]; then
+        RAWDATA_DIR="$(dirname "${RAWDATA_DIR}")"
+    fi
+    RAWDATA_DIR="$(cd "${RAWDATA_DIR}" 2>/dev/null && pwd || echo "${RAWDATA_DIR}")"
+
+    RAW_DIR="${RAWDATA_DIR}/${OBSID}"
+    REPO_DIR="${RAWDATA_DIR}/${OBSID}_repo"
+    ANALYSIS_DIR="${RAWDATA_DIR}/${OBSID}_analysis"
+    AUDIT_LOG="${ANALYSIS_DIR}/pipeline_audit.log"
 
     check_environment
 
     log_info "========================================================"
     log_info "Starting XRISM Resolve Reduction Pipeline"
-    log_info "  OBSID       : ${OBSID}"
-    log_info "  Source Name : ${SOURCE_NAME}"
-    log_info "  CORTIME(s)  : ${CORTIMES}"
-    log_info "  Exec Mode   : ${EXEC_MODE}"
-    log_info "  Analysis Dir: ${ANALYSIS_DIR}"
-    log_info "  NXB DB Dir  : ${NXB_DIR}"
+    log_info "  OBSID        : ${OBSID}"
+    log_info "  Source Name  : ${SOURCE_NAME}"
+    log_info "  Raw Base Dir : ${RAWDATA_DIR}"
+    log_info "  Raw Data Dir : ${RAW_DIR}"
+    log_info "  Repo Dir     : ${REPO_DIR}"
+    log_info "  Analysis Dir : ${ANALYSIS_DIR}"
+    log_info "  CORTIME(s)   : ${CORTIMES}"
+    log_info "  Exec Mode    : ${EXEC_MODE}"
+    log_info "  NXB DB Dir   : ${NXB_DIR}"
     log_info "========================================================"
 
     # Helper function to check if step should run

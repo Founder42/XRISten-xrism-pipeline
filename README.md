@@ -161,8 +161,11 @@ Optional Parameters:
   -m <MODE>           Execution mode: "all" or comma-separated steps
                       (e.g. "prepare,screen_risetime,cutoff_rigidity,chk_event").
                       (default: "all").
-  -i <RAW_DIR>        Input directory containing raw observation data (default: "./<OBSID>").
-  -b <NXB_DIR>        Directory of XRISM NXB database (default: "\$XRISM_NXB_DB" or "/path/to/XRISM_NXB_DB").
+  -i <RAWDATA_DIR>    Base directory containing raw observation data (default: ".").
+                      The pipeline accesses raw data at "<RAWDATA_DIR>/<OBSID>",
+                      creates reprocessed repository at "<RAWDATA_DIR>/<OBSID>_repo",
+                      and analysis workspace at "<RAWDATA_DIR>/<OBSID>_analysis".
+  -b <NXB_DIR>        Directory of XRISM NXB database (default: "$XRISM_NXB_DB" or "/path/to/XRISM_NXB_DB").
   -x <RDETX0>         Nominal detector X center (default: 3.5).
   -y <RDETY0>         Nominal detector Y center (default: 3.5).
   -h                  Show this help message and exit.
@@ -180,19 +183,19 @@ Available Step Names for -m:
 
 ### Examples
 
-#### 1. Run all steps for OBSID 201007010 with default CORTIME 4.0:
+#### 1. Run all steps with raw data at /path/to/rawdata/201007010:
   ```bash
-  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
+  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
   ```
 
 #### 2. Run multi-threshold CORTIME comparison (4 and 6):
   ```bash
-  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -c "4,6" -b /path/to/XRISM_NXB_DB
+  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -c "4,6" -b /path/to/XRISM_NXB_DB
   ```
 
-#### 3. Run specific steps only:
+#### 3. Run specific steps only from any directory:
   ```bash
-  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -m "cutoff_rigidity,extract_spec" -c "4,6"
+  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec" -c "4,6"
   ```
 
 ---
@@ -266,7 +269,7 @@ XRISten-xrism-pipeline/
 
 Every execution of `xrism_rsl_pipeline.sh` automatically records an audit trail into:
 ```text
-${SOURCE_NAME}_analysis/pipeline_audit.log
+${OBSID}_analysis/pipeline_audit.log
 ```
 This log timestamps all stage transitions, executed commands, and parameter configurations to ensure full scientific reproducibility.
 
