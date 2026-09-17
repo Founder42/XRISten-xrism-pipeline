@@ -80,6 +80,7 @@ The **XRISM (X-ray Imaging and Spectroscopy Mission)** Resolve instrument is a r
 ```
 
 - **Robust Execution Safety**: Implements `set -euo pipefail`, defensive variable quoting, and automated validation of `$HEADAS` and `$CALDB`.
+- **Time-Resolved (分段抽谱) Slicing**: Dynamic Astropy GTI slicing and automated non-interactive `xselect` event filtering for arbitrary relative time windows (`-e`, `-l`, `-u`) with zero regression for full-time reductions.
 - **CORTIME Exposure Optimization**: Enables multi-threshold screening (e.g. `-c "4,6"`) in a single pass to evaluate continuum shape consistency and maximize effective observation time.
 - **Headless `xselect` Automation**: Replaces interactive terminal prompts with clean heredoc injections (`<<EOF`).
 - **Standardized Detector Geometry**: Automatically generates 34-pixel region files (`region_no12_no27.reg`), isolating science pixels from calibration pixel 12 and noisy pixel 27.
@@ -124,21 +125,21 @@ pip install astropy
 
 ## Workflow Overview
 
-The pipeline executes the reduction through 11 modular stages:
+The pipeline executes the reduction through modular stages:
 
 | Stage | Step Name | Operation & Tool | Outputs / Deliverables |
 | :--- | :--- | :--- | :--- |
 | **0** | Environment Check | Validates `$HEADAS`, `$CALDB`, astropy, tools | Pre-flight confirmation |
-| **1** | Calibration & Reprocessing | Run `xapipeline` on raw observation directory | Cleaned event files (`*cl2.evt`) |
-| **2** | Pulse-Shape Screening | Rise-time filter (`rslpulsefit`, `maketime`) | Filtered event file `rsl_p0px1000_cl2.evt` |
-| **3** | Observation Metadata Extraction | `fkeyprint` & coordinate resolution (`coordpnt`) | Target RA/Dec, Roll angle, Pointing |
-| **4** | Detector Region Staging | Generate 34-pixel circular exclusion region | `region_no12_no27.reg` (Excludes px 12 & 27) |
-| **5** | CORTIME Screening Loop | Apply cut-off rigidity thresholds (e.g. 4, 6) | `rsl_cor<N>_evt.fits` |
-| **6** | Branching Ratios Calculation | Run `rslbratios` on screened event file | High-resolution branching ratio table |
-| **7** | Science Spectrum Extraction | Headless `xselect` (Hp grade 0, 34-pixel filter) | Science source spectrum (`*src_cor<N>.pha`) |
-| **8** | XL-Size Source RMF Generation | Run `rslmkrmf` (`resol=XL`, `quickrmf=no`) | Full-resolution response matrix (`*.rmf`) |
-| **9** | Point-Source ARF Calculation | Run `xaarfgen` raytracing calculation | Effective area curve (`*.arf`) |
-| **10**| Calibrated NXB Background | Run `rslnxbgen` & regenerate custom NXB RMF | Background spectrum (`*.nxb`) & RMF |
+| **-** | `check_exp` | Query base clean event exposure time (`fkeyprint`) | Base exposure readout in seconds |
+| **1** | `prepare` | Run `xapipeline` & stage flat analysis directory | Raw reprocessed repo & linked event files |
+| **2** | `screen_risetime` | Rise-time filter (`rslpulsefit`, `maketime`) | Filtered event file `xa<OBSID>rsl_p0px1000_cl2.evt` |
+| **-** | `filter_epoch` | Dynamic Astropy GTI slicing & `xselect` filtering | `xa<OBSID>_<EPOCH>.gti` & `xa<TAG>rsl_p0px1000_cl2.evt` |
+| **3** | `cutoff_rigidity` | Apply cut-off rigidity thresholds (e.g. 4, 6) | `xa<TAG>rsl_p0px1000_cl2_COR<N>.evt` |
+| **4** | `chk_event` | Run `rslbratios` & automated `xselect` | Branching ratios, DET image, and light curve |
+| **5** | `extract_spec` | Headless `xselect` (Hp grade 0, 34-pixel filter) | Science source spectrum (`<TAG>_rsl_Hp_src_COR<N>.pha`) |
+| **6** | `generate_rmf` | Create UPR event file & run `rslmkrmf` (XL size) | Full-resolution response matrix (`<TAG>*.rmf`) |
+| **7** | `generate_arf` | Spatial exposure map (`xaexpmap`) & raytracing | Effective area curve (`<TAG>*.arf`) |
+| **8** | `generate_NXB` | Run `rslnxbgen` & regenerate custom NXB RMF | Background spectrum (`<TAG>*.nxb`) & matched RMF |
 
 ---
 
@@ -165,14 +166,20 @@ Optional Parameters:
                       The pipeline accesses raw data at "<RAWDATA_DIR>/<OBSID>",
                       creates reprocessed repository at "<RAWDATA_DIR>/<OBSID>_repo",
                       and analysis workspace at "<RAWDATA_DIR>/<OBSID>_analysis".
+  -e <EPOCH_NAME>     Identifier tag for time-resolved epoch (e.g. "epoch1", "flare").
+                      When specified, products use tag "<OBSID>_<EPOCH>".
+  -l <DELTA_T_LOW>    Relative start time for time-resolved slicing in seconds (e.g. 0).
+  -u <DELTA_T_HIGH>   Relative stop time for time-resolved slicing in seconds (e.g. 20000).
   -b <NXB_DIR>        Directory of XRISM NXB database (default: "$XRISM_NXB_DB" or "/path/to/XRISM_NXB_DB").
   -x <RDETX0>         Nominal detector X center (default: 3.5).
   -y <RDETY0>         Nominal detector Y center (default: 3.5).
   -h                  Show this help message and exit.
 
 Available Step Names for -m:
+  check_exp           Inspect base clean event exposure time (EXPOSURE).
   prepare             Create analysis directory, link files, inspect headers.
   screen_risetime     Execute pulse-shape and rise-time screening (cl2.evt).
+  filter_epoch        Slice GTI and filter events for time-resolved epoch (-e, -l, -u).
   cutoff_rigidity     Apply CORTIME filtering for each specified threshold.
   chk_event           Compute branching ratios, DET image, and light curve.
   extract_spec        Extract Resolve Hp grade-0 spectrum.
@@ -183,20 +190,30 @@ Available Step Names for -m:
 
 ### Examples
 
-#### 1. Run all steps with raw data at /path/to/rawdata/201007010:
-  ```bash
-  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
-  ```
+#### 1. Base full-time reduction (default all steps):
+```bash
+./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
+```
 
-#### 2. Run multi-threshold CORTIME comparison (4 and 6):
-  ```bash
-  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -c "4,6" -b /path/to/XRISM_NXB_DB
-  ```
+#### 2. Inspect base observation exposure time:
+```bash
+./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m check_exp
+```
 
-#### 3. Run specific steps only from any directory:
-  ```bash
-  ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec" -c "4,6"
-  ```
+#### 3. Slice and filter events for a time-resolved epoch (0 to 20,000 s relative to $t_0$):
+```bash
+./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m filter_epoch -e epoch1 -l 0 -u 20000
+```
+
+#### 4. Run time-resolved reduction from cutoff_rigidity through ARF generation:
+```bash
+./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec,generate_rmf,generate_arf" -e epoch1 -c "4.0"
+```
+
+#### 5. End-to-end full reduction in time-resolved mode:
+```bash
+./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -e epoch1 -l 0 -u 20000 -c "4.0" -b /path/to/XRISM_NXB_DB
+```
 
 ---
 
