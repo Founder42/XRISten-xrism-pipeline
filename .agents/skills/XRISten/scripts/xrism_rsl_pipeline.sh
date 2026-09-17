@@ -511,7 +511,8 @@ step_chk_event() {
 
     # 1. Branching ratios
     log_info "Calculating branching ratios with rslbratios (TAG=${TAG})..."
-    rslbratios infile="${evt}" filetype=cl outroot="${br_root}" lcbin=128.0 clobber=yes
+    punlearn rslbratios
+    rslbratios infile="${evt}" filetype=cl outroot="${br_root}" lcbin=128.0 eband="2-12" lcurve="yes" clobber=yes
     log_audit "EXEC: rslbratios -> ${br_root}"
 
     # 2. DET pixel image via xselect (Heredoc)
