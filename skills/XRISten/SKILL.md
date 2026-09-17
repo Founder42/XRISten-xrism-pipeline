@@ -69,6 +69,7 @@ All parameters MUST strictly adhere to the `usage()` function of `xrism_rsl_pipe
 | `prepare` | Create `<RAWDATA_DIR>/<OBSID>_analysis`, stage event files, inspect headers, generate 34-pixel region `region_no12_no27.reg`. |
 | `screen_risetime` | Execute Resolve pulse-shape and rise-time screening (`xa${OBSID}rsl_p0px1000_cl2.evt`). |
 | `filter_epoch` | Dynamically slice GTI via Astropy relative to $t_0$ and filter events via `xselect` (`xa${TAG}rsl_p0px1000_cl2.evt`). |
+| `epoch_all` | Composite alias: run complete time-resolved reduction (`filter_epoch` through `generate_NXB`). |
 | `cutoff_rigidity` | Apply `maketime` & `extractor` for each specified `CORTIME` threshold. |
 | `chk_event` | Compute branching ratios (`rslbratios`), DET image, and light curve (128s bin). |
 | `extract_spec` | Extract Resolve Hp grade-0 spectrum excluding pixels 12 & 27 via headless `xselect`. |
@@ -82,6 +83,10 @@ All parameters MUST strictly adhere to the `usage()` function of `xrism_rsl_pipe
 
 ### Step 1: Inquire Necessary Parameters
 Upon activation or request, ask for the missing parameters relevant to the user's intent. If the user already provided the parameters in their message, proceed immediately to Step 2.
+- **For Standard Full-Time Reduction**: Ask for ObsID, Raw Data Dir, CORTIME, NXB path.
+- **For Time-Resolved Spectroscopy (Two-Phase Workflow)**:
+  - If the user hasn't run base screening yet, guide them to run **Phase 1** (`-m "prepare,screen_risetime"` followed by `-m check_exp`).
+  - Once base exposure is known and the user provides relative time boundaries (`-l`, `-u`), generate the **Phase 2** command.
 
 ### Step 2: Print ONLY the Formatted Command Line
 Assemble the exact invocation and print it inside a Bash code block with line continuations (`\`).
@@ -106,29 +111,35 @@ Conclude with a brief reminder:
 
 ## 5. Canonical Command Examples
 
-### Scenario 1: Base Full Reduction (Default CORTIME 4.0)
+### Scenario 1: Base Full-Time Reduction (Entire Observation)
 ```bash
 ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
 ```
 
-### Scenario 2: Inspect Base Observation Exposure Time
+### --- Two-Phase Time-Resolved Spectroscopy Workflow ---
+
+### Phase 1, Step A: Baseline Event Screening
+```bash
+./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -m "prepare,screen_risetime"
+```
+
+### Phase 1, Step B: Inspect Clean Event Exposure Time (Plan Epochs)
 ```bash
 ./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m check_exp
 ```
 
-### Scenario 3: Time-Resolved GTI Slicing & Event Filtering Only
-```bash
-./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m filter_epoch -e epoch1 -l 0 -u 20000
-```
-
-### Scenario 4: Time-Resolved Downstream Extraction (Cutoff Rigidity through ARF)
-```bash
-./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec,generate_rmf,generate_arf" -e epoch1 -c "4.0"
-```
-
-### Scenario 5: Full End-to-End Reduction in Time-Resolved Mode
+### Phase 2: End-to-End Time-Resolved Epoch Extraction (Auto-skips Base Prep)
 ```bash
 ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -e epoch1 -l 0 -u 20000 -c "4.0" -b /path/to/XRISM_NXB_DB
+```
+
+### (Optional) Individual Epoch Sub-steps
+```bash
+# Slice GTI and filter events only
+./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m filter_epoch -e epoch1 -l 0 -u 20000
+
+# Re-run downstream extraction from cutoff rigidity
+./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec,generate_rmf,generate_arf" -e epoch1 -c "4.0"
 ```
 
 ---

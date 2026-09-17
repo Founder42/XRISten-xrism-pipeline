@@ -824,6 +824,7 @@ Available Step Names for -m:
   prepare             Create analysis directory, link files, inspect headers.
   screen_risetime     Execute pulse-shape and rise-time screening (cl2.evt).
   filter_epoch        Slice GTI and filter events for time-resolved epoch (-e, -l, -u).
+  epoch_all           Run complete time-resolved workflow (filter_epoch through generate_NXB).
   cutoff_rigidity     Apply CORTIME filtering for each specified threshold.
   chk_event           Compute branching ratios, DET image, and light curve.
   extract_spec        Extract Resolve Hp grade-0 spectrum.
@@ -832,20 +833,22 @@ Available Step Names for -m:
   generate_NXB        Generate NXB spectrum, image, and custom NXB RMF.
 
 Examples:
-  # 1. Base full-time reduction (default all steps):
+  # 1. Base full-time reduction (default all steps on entire observation):
   $(basename "$0") -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
 
-  # 2. Check base clean event exposure time:
+  # --- Two-Phase Time-Resolved Spectroscopy Workflow ---
+  # Phase 1, Step A: Prepare & screen baseline event file:
+  $(basename "$0") -o 201007010 -s Mrk3 -i /path/to/rawdata -m "prepare,screen_risetime"
+
+  # Phase 1, Step B: Check base clean event exposure time to plan epochs:
   $(basename "$0") -o 201007010 -i /path/to/rawdata -m check_exp
 
-  # 3. Filter an epoch window (0 to 20000 s relative to observation start):
+  # Phase 2: End-to-end epoch extraction (auto-skips base prep & runs all downstream steps):
+  $(basename "$0") -o 201007010 -s Mrk3 -i /path/to/rawdata -e epoch1 -l 0 -u 20000 -c "4.0" -b /path/to/XRISM_NXB_DB
+
+  # (Optional) Run individual epoch sub-steps via -m:
   $(basename "$0") -o 201007010 -i /path/to/rawdata -m filter_epoch -e epoch1 -l 0 -u 20000
-
-  # 4. Run time-resolved reduction for epoch1 from cutoff_rigidity to generate_arf:
   $(basename "$0") -o 201007010 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec,generate_rmf,generate_arf" -e epoch1 -c "4.0"
-
-  # 5. Run full pipeline in time-resolved mode:
-  $(basename "$0") -o 201007010 -i /path/to/rawdata -e epoch1 -l 0 -u 20000 -c "4.0" -b /path/to/XRISM_NXB_DB
 USAGE_EOF
     exit 0
 }
@@ -920,6 +923,21 @@ main() {
 
     check_environment
 
+    # Pre-flight validation for Time-Resolved Epoch Mode
+    if [[ -n "${EPOCH:-}" ]]; then
+        local base_cl2="${ANALYSIS_DIR}/xa${OBSID}rsl_p0px1000_cl2.evt"
+        if [[ ! -f "${base_cl2}" ]]; then
+            # If the user explicitly requested prepare or screen_risetime in -m, allow it
+            if ! [[ ",${EXEC_MODE}," == *",prepare,"* || ",${EXEC_MODE}," == *",screen_risetime,"* ]]; then
+                log_error "Base clean event file '${base_cl2}' not found in '${ANALYSIS_DIR}'."
+                log_error "Time-resolved epoch reduction requires pre-existing base screening."
+                log_error "Please run base preparation first (Phase 1):"
+                log_error "  $(basename "$0") -o ${OBSID} -i ${RAWDATA_DIR} -m \"prepare,screen_risetime\""
+                exit 1
+            fi
+        fi
+    fi
+
     log_info "========================================================"
     log_info "Starting XRISM Resolve Reduction Pipeline"
     log_info "  OBSID        : ${OBSID}"
@@ -942,14 +960,32 @@ main() {
     should_run() {
         local step="$1"
         if [[ "${EXEC_MODE}" == "all" ]]; then
+            # check_exp is strictly an on-demand inspection tool
             if [[ "${step}" == "check_exp" ]]; then
                 return 1
             fi
-            if [[ "${step}" == "filter_epoch" && -z "${EPOCH:-}" ]]; then
+            # In time-resolved mode (-e active), skip base preparation and screening!
+            if [[ -n "${EPOCH:-}" ]]; then
+                if [[ "${step}" == "prepare" || "${step}" == "screen_risetime" ]]; then
+                    return 1
+                fi
+                return 0
+            fi
+            # In standard full-time mode (-e empty), skip filter_epoch
+            if [[ "${step}" == "filter_epoch" ]]; then
                 return 1
             fi
             return 0
         fi
+
+        # Support composite mode alias: epoch_all
+        if [[ "${EXEC_MODE}" == "epoch_all" ]]; then
+            if [[ "${step}" == "prepare" || "${step}" == "screen_risetime" || "${step}" == "check_exp" ]]; then
+                return 1
+            fi
+            return 0
+        fi
+
         [[ ",${EXEC_MODE}," == *",${step},"* ]]
     }
 

@@ -180,6 +180,7 @@ Available Step Names for -m:
   prepare             Create analysis directory, link files, inspect headers.
   screen_risetime     Execute pulse-shape and rise-time screening (cl2.evt).
   filter_epoch        Slice GTI and filter events for time-resolved epoch (-e, -l, -u).
+  epoch_all           Run complete time-resolved workflow (filter_epoch through generate_NXB).
   cutoff_rigidity     Apply CORTIME filtering for each specified threshold.
   chk_event           Compute branching ratios, DET image, and light curve.
   extract_spec        Extract Resolve Hp grade-0 spectrum.
@@ -190,29 +191,37 @@ Available Step Names for -m:
 
 ### Examples
 
-#### 1. Base full-time reduction (default all steps):
+#### 1. Base full-time reduction (default all steps on entire observation):
 ```bash
 ./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -r 93.901482 -d 71.037482 -b /path/to/XRISM_NXB_DB
 ```
 
-#### 2. Inspect base observation exposure time:
+---
+
+### Two-Phase Time-Resolved Spectroscopy Workflow
+
+#### Phase 1: Baseline Event Screening & Exposure Diagnostic
 ```bash
+# Step 1.1: Prepare observation & screen baseline events
+./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -m "prepare,screen_risetime"
+
+# Step 1.2: Inspect clean event exposure time to plan epoch windows:
 ./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m check_exp
 ```
 
-#### 3. Slice and filter events for a time-resolved epoch (0 to 20,000 s relative to $t_0$):
+#### Phase 2: End-to-End Epoch Extraction (Auto-skips Base Prep)
 ```bash
+# Automatically runs filter_epoch and all 6 downstream steps:
+./xrism_rsl_pipeline.sh -o 201007010 -s Mrk3 -i /path/to/rawdata -e epoch1 -l 0 -u 20000 -c "4.0" -b /path/to/XRISM_NXB_DB
+```
+
+#### (Optional) Individual Epoch Sub-steps:
+```bash
+# Slice GTI and filter events only
 ./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m filter_epoch -e epoch1 -l 0 -u 20000
-```
 
-#### 4. Run time-resolved reduction from cutoff_rigidity through ARF generation:
-```bash
+# Re-run downstream extraction from cutoff rigidity through ARF
 ./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -m "cutoff_rigidity,extract_spec,generate_rmf,generate_arf" -e epoch1 -c "4.0"
-```
-
-#### 5. End-to-end full reduction in time-resolved mode:
-```bash
-./xrism_rsl_pipeline.sh -o 201007010 -i /path/to/rawdata -e epoch1 -l 0 -u 20000 -c "4.0" -b /path/to/XRISM_NXB_DB
 ```
 
 ---
